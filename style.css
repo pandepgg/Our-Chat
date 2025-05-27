@@ -1,0 +1,26 @@
+body {
+    font-family: 'Inter', sans-serif; /* cite: 1 */
+}
+#chatLog::-webkit-scrollbar {
+    width: 8px; /* cite: 2 */
+}
+#chatLog::-webkit-scrollbar-track {
+    background: #f1f1f1; /* cite: 3 */
+    border-radius: 10px; /* cite: 3 */
+}
+#chatLog::-webkit-scrollbar-thumb {
+    background: #888; /* cite: 4 */
+    border-radius: 10px; /* cite: 4 */
+}
+#chatLog::-webkit-scrollbar-thumb:hover {
+    background: #555; /* cite: 5 */
+}
+.code-textarea {
+    min-height: 100px; /* cite: 6 */
+    font-family: monospace; /* cite: 7 */
+    font-size: 0.8rem; /* cite: 7 */
+    word-break: break-all; /* cite: 7 */
+}
+.hidden {
+    display: none; /* cite: 8 */
+}
