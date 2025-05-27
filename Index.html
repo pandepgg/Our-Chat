@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC P2P Chat - Simplified</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #chatLog::-webkit-scrollbar { width: 8px; }
+        #chatLog::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        #chatLog::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+        #chatLog::-webkit-scrollbar-thumb:hover { background: #555; }
+        .code-textarea {
+            min-height: 100px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            word-break: break-all;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl bg-white shadow-xl rounded-lg p-6 space-y-6">
+        <header class="text-center">
+            <h1 class="text-3xl font-bold text-gray-800">WebRTC P2P Chat</h1>
+            <p id="connectionStatus" class="text-sm text-gray-500 mt-1">Status: Ready</p>
+            <p id="generalInstructions" class="text-xs text-blue-600 mt-1"></p>
+        </header>
+
+        <div id="roleSelectionContainer" class="space-y-4 text-center">
+            <h2 class="text-xl font-semibold text-gray-700">Choose Your Role:</h2>
+            <button id="hostChatBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-md shadow-sm text-lg transition duration-150 ease-in-out">
+                Host a New Chat
+            </button>
+            <button id="joinChatBtn" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-md shadow-sm text-lg transition duration-150 ease-in-out">
+                Join an Existing Chat
+            </button>
+        </div>
+
+        <div id="hostContainer" class="hidden space-y-4 p-4 border border-blue-200 rounded-lg bg-blue-50">
+            <h2 class="text-xl font-semibold text-blue-700">Host Controls</h2>
+            <div>
+                <button id="generateHostCodeBtn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm">
+                    1. Generate My Connection Code
+                </button>
+            </div>
+            <div>
+                <label for="hostCodeOutput" class="block text-sm font-medium text-gray-700 mb-1">My Connection Code (Send this to your friend):</label>
+                <textarea id="hostCodeOutput" readonly class="w-full p-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 code-textarea" placeholder="Your code will appear here..."></textarea>
+            </div>
+            <div>
+                <label for="friendReplyCodeInput" class="block text-sm font-medium text-gray-700 mb-1">Friend's Reply Code (Paste here):</label>
+                <textarea id="friendReplyCodeInput" class="w-full p-2 border border-gray-300 rounded-md shadow-sm code-textarea" placeholder="Paste your friend's reply code..."></textarea>
+            </div>
+            <div>
+                <button id="finalizeConnectionBtn" disabled class="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm">
+                    2. Finalize Connection
+                </button>
+            </div>
+        </div>
+
+        <div id="joinerContainer" class="hidden space-y-4 p-4 border border-green-200 rounded-lg bg-green-50">
+            <h2 class="text-xl font-semibold text-green-700">Joiner Controls</h2>
+            <div>
+                <label for="hostOriginalCodeInput" class="block text-sm font-medium text-gray-700 mb-1">Host's Connection Code (Paste here):</label>
+                <textarea id="hostOriginalCodeInput" class="w-full p-2 border border-gray-300 rounded-md shadow-sm code-textarea" placeholder="Paste the host's original code..."></textarea>
+            </div>
+            <div>
+                <button id="generateJoinerReplyBtn" disabled class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm">
+                    1. Submit Host's Code & Get My Reply Code
+                </button>
+            </div>
+            <div>
+                <label for="joinerReplyCodeOutput" class="block text-sm font-medium text-gray-700 mb-1">My Reply Code (Send this back to the host):</label>
+                <textarea id="joinerReplyCodeOutput" readonly class="w-full p-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 code-textarea" placeholder="Your reply code will appear here..."></textarea>
+            </div>
+        </div>
+        
+        <div id="resetContainer" class="hidden text-center mt-4">
+            <button id="resetBtn" class="bg-gray-400 hover:bg-gray-500 text-white font-semibold py-2 px-4 rounded-md shadow-sm">
+                Start Over / Cancel
+            </button>
+        </div>
+
+
+        <div id="chatContainer" class="hidden space-y-4">
+            <h2 class="text-xl font-semibold text-gray-700">Chat Room</h2>
+            <div id="chatLog" class="h-64 w-full border border-gray-300 rounded-md p-3 overflow-y-auto bg-gray-50 space-y-2">
+                </div>
+            <div class="flex space-x-3">
+                <input type="text" id="messageInput" class="flex-grow p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="Type your message..." disabled>
+                <button id="sendButton" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition duration-150 ease-in-out" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const connectionStatus = document.getElementById('connectionStatus');
+        const generalInstructions = document.getElementById('generalInstructions');
+
+        const roleSelectionContainer = document.getElementById('roleSelectionContainer');
+        const hostChatBtn = document.getElementById('hostChatBtn');
+        const joinChatBtn = document.getElementById('joinChatBtn');
+
+        const hostContainer = document.getElementById('hostContainer');
+        const generateHostCodeBtn = document.getElementById('generateHostCodeBtn');
+        const hostCodeOutput = document.getElementById('hostCodeOutput');
+        const friendReplyCodeInput = document.getElementById('friendReplyCodeInput');
+        const finalizeConnectionBtn = document.getElementById('finalizeConnectionBtn');
+
+        const joinerContainer = document.getElementById('joinerContainer');
+        const hostOriginalCodeInput = document.getElementById('hostOriginalCodeInput');
+        const generateJoinerReplyBtn = document.getElementById('generateJoinerReplyBtn');
+        const joinerReplyCodeOutput = document.getElementById('joinerReplyCodeOutput');
+        
+        const resetContainer = document.getElementById('resetContainer');
+        const resetBtn = document.getElementById('resetBtn');
+
+        const chatContainer = document.getElementById('chatContainer');
+        const chatLog = document.getElementById('chatLog');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+
+        // WebRTC Variables
+        let peerConnection;
+        let dataChannel;
+        const iceServers = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+            ]
+        };
+
+        function initializeApp() {
+            roleSelectionContainer.classList.remove('hidden');
+            hostContainer.classList.add('hidden');
+            joinerContainer.classList.add('hidden');
+            chatContainer.classList.add('hidden');
+            resetContainer.classList.add('hidden');
+
+            hostCodeOutput.value = '';
+            friendReplyCodeInput.value = '';
+            hostOriginalCodeInput.value = '';
+            joinerReplyCodeOutput.value = '';
+            messageInput.value = '';
+            
+            finalizeConnectionBtn.disabled = true;
+            generateJoinerReplyBtn.disabled = true;
+            messageInput.disabled = true;
+            sendButton.disabled = true;
+            
+            updateConnectionStatus('Ready. Choose your role.');
+            generalInstructions.textContent = '';
+
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            if (dataChannel) {
+                dataChannel.close();
+                dataChannel = null;
+            }
+        }
+        
+        resetBtn.onclick = initializeApp;
+
+        function initializePeerConnection() {
+            if (peerConnection) peerConnection.close();
+            peerConnection = new RTCPeerConnection(iceServers);
+
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    // SDP usually includes candidates, but for robustness, this should be handled.
+                    // For this simplified manual exchange, we rely on the SDP.
+                    // If localDescription is set, update the relevant output textarea
+                    if(peerConnection.localDescription) {
+                        if (hostCodeOutput.value && hostContainer.classList.contains('hidden') === false) { // Host generated offer
+                           hostCodeOutput.value = JSON.stringify(peerConnection.localDescription);
+                        } else if (joinerReplyCodeOutput.value && joinerContainer.classList.contains('hidden') === false) { // Joiner generated answer
+                           joinerReplyCodeOutput.value = JSON.stringify(peerConnection.localDescription);
+                        }
+                    }
+                }
+            };
+            
+            peerConnection.onicegatheringstatechange = () => {
+                 if (peerConnection && peerConnection.localDescription) {
+                    if (hostCodeOutput.value && hostContainer.classList.contains('hidden') === false) {
+                       hostCodeOutput.value = JSON.stringify(peerConnection.localDescription);
+                    } else if (joinerReplyCodeOutput.value && joinerContainer.classList.contains('hidden') === false) {
+                       joinerReplyCodeOutput.value = JSON.stringify(peerConnection.localDescription);
+                    }
+                }
+            };
+
+            peerConnection.oniceconnectionstatechange = () => {
+                updateConnectionStatus(`ICE State: ${peerConnection.iceConnectionState}`);
+                if (['failed', 'disconnected', 'closed'].includes(peerConnection.iceConnectionState)) {
+                    handleDisconnect(false); // Don't re-initialize, just update UI
+                }
+            };
+
+            peerConnection.ondatachannel = event => {
+                dataChannel = event.channel;
+                setupDataChannelEvents();
+            };
+        }
+
+        function setupDataChannelEvents() {
+            if (!dataChannel) return;
+            dataChannel.onopen = () => {
+                updateConnectionStatus('Connected!');
+                generalInstructions.textContent = 'You are now connected. Start chatting!';
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                hostContainer.classList.add('hidden');
+                joinerContainer.classList.add('hidden');
+                roleSelectionContainer.classList.add('hidden');
+                chatContainer.classList.remove('hidden');
+                resetContainer.classList.remove('hidden'); // Show reset button
+            };
+            dataChannel.onmessage = event => appendMessage(event.data, 'Peer');
+            dataChannel.onclose = () => handleDisconnect(false);
+            dataChannel.onerror = error => {
+                console.error('Data channel error:', error);
+                appendMessage(`Data channel error: ${error.message || error}`, 'System');
+            };
+        }
+        
+        function handleDisconnect(fullReset = true) {
+            updateConnectionStatus('Disconnected');
+            generalInstructions.textContent = 'Connection lost or closed.';
+            messageInput.disabled = true;
+            sendButton.disabled = true;
+            if (dataChannel) dataChannel.close();
+            if (peerConnection) peerConnection.close();
+            dataChannel = null;
+            peerConnection = null;
+            
+            if (fullReset) {
+                initializeApp(); // Go back to role selection
+            } else {
+                // Keep current role UI visible but indicate disconnected state
+                chatContainer.classList.add('hidden');
+                // Role selection might be better here too, or allow retry within current role
+                roleSelectionContainer.classList.remove('hidden');
+                hostContainer.classList.add('hidden');
+                joinerContainer.classList.add('hidden');
+                resetContainer.classList.remove('hidden');
+            }
+        }
+
+        function updateConnectionStatus(statusText) {
+            connectionStatus.textContent = `Status: ${statusText}`;
+        }
+
+        function appendMessage(message, sender) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('p-2', 'rounded-lg', 'max-w-xs', 'break-words', 'text-sm');
+            const senderSpan = document.createElement('span');
+            senderSpan.classList.add('font-semibold');
+
+            if (sender === 'Me') {
+                messageElement.classList.add('bg-indigo-500', 'text-white', 'ml-auto');
+                senderSpan.textContent = 'Me: ';
+            } else if (sender === 'Peer') {
+                messageElement.classList.add('bg-gray-300', 'text-gray-800', 'mr-auto');
+                senderSpan.textContent = 'Peer: ';
+            } else {
+                messageElement.classList.add('bg-yellow-200', 'text-yellow-800', 'text-center', 'w-full', 'max-w-full');
+                senderSpan.textContent = 'System: ';
+            }
+            messageElement.appendChild(senderSpan);
+            messageElement.append(document.createTextNode(message));
+            chatLog.appendChild(messageElement);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        // Role Selection
+        hostChatBtn.onclick = () => {
+            roleSelectionContainer.classList.add('hidden');
+            hostContainer.classList.remove('hidden');
+            resetContainer.classList.remove('hidden');
+            updateConnectionStatus('Host mode selected.');
+            generalInstructions.textContent = "Click 'Generate My Connection Code', send it to your friend, then paste their reply and click 'Finalize Connection'.";
+        };
+
+        joinChatBtn.onclick = () => {
+            roleSelectionContainer.classList.add('hidden');
+            joinerContainer.classList.remove('hidden');
+            resetContainer.classList.remove('hidden');
+            updateConnectionStatus('Joiner mode selected.');
+            generalInstructions.textContent = "Paste the Host's code, click 'Submit Host's Code & Get My Reply Code', then send your reply code back to the host.";
+        };
+
+        // Host Logic
+        generateHostCodeBtn.onclick = async () => {
+            try {
+                updateConnectionStatus('Generating host code...');
+                initializePeerConnection();
+                dataChannel = peerConnection.createDataChannel('chatChannel');
+                setupDataChannelEvents();
+
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                hostCodeOutput.value = JSON.stringify(peerConnection.localDescription);
+                updateConnectionStatus('Host code generated.');
+                generalInstructions.textContent = 'Send "My Connection Code" to your friend. Then wait for their reply code.';
+                appendMessage('Your connection code is generated. Send it to your friend.', 'System');
+            } catch (error) {
+                console.error('Error creating offer:', error);
+                updateConnectionStatus(`Error: ${error.message}`);
+                appendMessage(`Error creating offer: ${error.message}`, 'System');
+            }
+        };
+
+        friendReplyCodeInput.oninput = () => {
+            finalizeConnectionBtn.disabled = !friendReplyCodeInput.value.trim();
+        };
+
+        finalizeConnectionBtn.onclick = async () => {
+            const friendCode = friendReplyCodeInput.value.trim();
+            if (!friendCode) {
+                alert('Please paste your friend\'s reply code.');
+                return;
+            }
+            if (!peerConnection || !peerConnection.localDescription) {
+                 alert('Please generate your host code first.');
+                 return;
+            }
+            try {
+                updateConnectionStatus('Processing friend\'s code...');
+                const answer = JSON.parse(friendCode);
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                updateConnectionStatus('Friend\'s code accepted. Attempting to connect...');
+                generalInstructions.textContent = 'Trying to connect...';
+                appendMessage('Friend\'s reply code accepted. Connection should establish soon.', 'System');
+            } catch (error) {
+                console.error('Error adding answer:', error);
+                updateConnectionStatus(`Error: ${error.message}`);
+                appendMessage(`Error processing friend's code: ${error.message}`, 'System');
+            }
+        };
+
+        // Joiner Logic
+        hostOriginalCodeInput.oninput = () => {
+            generateJoinerReplyBtn.disabled = !hostOriginalCodeInput.value.trim();
+        };
+
+        generateJoinerReplyBtn.onclick = async () => {
+            const hostCode = hostOriginalCodeInput.value.trim();
+            if (!hostCode) {
+                alert('Please paste the host\'s connection code.');
+                return;
+            }
+            try {
+                updateConnectionStatus('Processing host\'s code & generating reply...');
+                initializePeerConnection(); // Joiner also needs a peer connection
+
+                const offer = JSON.parse(hostCode);
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+
+                joinerReplyCodeOutput.value = JSON.stringify(peerConnection.localDescription);
+                updateConnectionStatus('Reply code generated.');
+                generalInstructions.textContent = 'Send "My Reply Code" back to the host. Waiting for connection...';
+                appendMessage('Your reply code generated. Send it to the host.', 'System');
+            } catch (error) {
+                console.error('Error creating answer:', error);
+                updateConnectionStatus(`Error: ${error.message}`);
+                appendMessage(`Error processing host's code: ${error.message}`, 'System');
+            }
+        };
+
+        // Chat Logic
+        sendButton.onclick = () => {
+            const message = messageInput.value.trim();
+            if (message && dataChannel && dataChannel.readyState === 'open') {
+                dataChannel.send(message);
+                appendMessage(message, 'Me');
+                messageInput.value = '';
+            } else if (!dataChannel || dataChannel.readyState !== 'open') {
+                appendMessage('Cannot send message. Data channel is not open.', 'System');
+            }
+        }
